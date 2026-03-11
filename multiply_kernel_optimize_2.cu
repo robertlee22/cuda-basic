@@ -8,44 +8,35 @@ int M = 4096;
 int N = 4096;
 int K = 1024;
 
-__global__ void multiply(int *A, int *B, int *C, int M, int K, int N){
-    // C implementation 
-    // for(int i = 0; i<M, i++){
-    //     for (int j = 0; j<N; j++){
-    //         int sum = 0; 
-    //         for(int k =0; k< K; k++){
-    //             sum += A[ i*K+k ] * B[k*K + j]
-    //         }
-    //         C[ i*N +j ] = sum; 
-    //     }
-    // }
+#define TILE 16
 
-    // exec id  mi mj 的任务含有什么？
-    // mi = blockIdx.x 
-    // mj = threadIdx.x 
-    
-    //gi ,  gi * gridDim.x < M 
-    // gj , gj * blockDim.x < N
-    // row = mi + gi * gridDim.x
-    // col = gj*blockDim.x *  + mj
-    // C[row * N + col ] = sum 
-    // k,  sum += A[ row*K + k] * B[k*K + col ]
-    
-    
+__global__ void multiply(int *A, int *B, int *C, int M, int K, int N){
     // cuda implementation 
-    int mi = blockIdx.x ; 
-    int mj = threadIdx.x ; 
+    int col = threadIdx.x + blockDim.x* blockIdx.x ; 
+    int row =  threadIdx.y + blockDim.y * blockIdx.y; 
     
-    for(int gi=0; gi*gridDim.x < M; gi++){
-        for(int gj=0; gj*blockDim.x < N; gj++){
-            int sum = 0; 
-            int row = mi + gi*gridDim.x ;
-            int col = gj*blockDim.x + mj;
-            for(int k = 0; k<K; k++){
-                sum += A[row* K + k] * B[k*N + col];
+    if(col < N && row < M){
+        int sum = 0; 
+
+        __shared__ int As[TILE][TILE]; 
+        __shared__ int Bs[TILE][TILE]; 
+       
+        for(int t = 0; t * TILE < K; t++){
+            // fetch to tile , sync ; 
+            int ax = t*TILE + threadIdx.y ; 
+            int by = t*TILE + threadIdx.x ; 
+            
+            As[threadIdx.y][threadIdx.x] = A[row][ax]; 
+            Bs[threadIdx.y][threadIdx.x] = B[by][col]; 
+
+            __syncThreads__() ; 
+            // compute 
+            for(int k=0; k< TILE; k++){
+                sum += As[row][k]*Bs[k][col]; 
             }
-            C[row* N + col] = sum; 
+            __syncThreads__() ;
         }
+        C[row* N + col] = sum; 
     }
     // compute object C[i][j] 
 }
@@ -75,7 +66,9 @@ int main() {
     cudaMemPrefetchAsync(C, sizeof(int)* M*N, 0, 0);
 
     //kernel multiply
-    multiply<<<128, 256>>>(A,B,C, M,K,N); 
+    dim3 block(16,16); 
+    dim3 grid((N+15)/16, (M+16)/16)
+    multiply<<<grid, block>>>(A,B,C, M,K,N); 
     cudaDeviceSynchronize(); 
 
     //check result 

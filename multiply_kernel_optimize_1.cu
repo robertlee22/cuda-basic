@@ -9,43 +9,17 @@ int N = 4096;
 int K = 1024;
 
 __global__ void multiply(int *A, int *B, int *C, int M, int K, int N){
-    // C implementation 
-    // for(int i = 0; i<M, i++){
-    //     for (int j = 0; j<N; j++){
-    //         int sum = 0; 
-    //         for(int k =0; k< K; k++){
-    //             sum += A[ i*K+k ] * B[k*K + j]
-    //         }
-    //         C[ i*N +j ] = sum; 
-    //     }
-    // }
-
-    // exec id  mi mj 的任务含有什么？
-    // mi = blockIdx.x 
-    // mj = threadIdx.x 
-    
-    //gi ,  gi * gridDim.x < M 
-    // gj , gj * blockDim.x < N
-    // row = mi + gi * gridDim.x
-    // col = gj*blockDim.x *  + mj
-    // C[row * N + col ] = sum 
-    // k,  sum += A[ row*K + k] * B[k*K + col ]
-    
-    
     // cuda implementation 
-    int mi = blockIdx.x ; 
-    int mj = threadIdx.x ; 
+    int col = threadIdx.x + blockDim.x* blockIdx.x ; 
+    int row =  threadIdx.y + blockDim.y * blockIdx.y; 
     
-    for(int gi=0; gi*gridDim.x < M; gi++){
-        for(int gj=0; gj*blockDim.x < N; gj++){
-            int sum = 0; 
-            int row = mi + gi*gridDim.x ;
-            int col = gj*blockDim.x + mj;
-            for(int k = 0; k<K; k++){
-                sum += A[row* K + k] * B[k*N + col];
-            }
-            C[row* N + col] = sum; 
+    if(col < N && row < M){
+        int sum = 0; 
+       
+        for(int k = 0; k<K; k++){
+            sum += A[row* K + k] * B[k*N + col];
         }
+        C[row* N + col] = sum; 
     }
     // compute object C[i][j] 
 }
@@ -75,7 +49,9 @@ int main() {
     cudaMemPrefetchAsync(C, sizeof(int)* M*N, 0, 0);
 
     //kernel multiply
-    multiply<<<128, 256>>>(A,B,C, M,K,N); 
+    dim3 block(16,16); 
+    dim3 grid((N+15)/16, (M+16)/16)
+    multiply<<<grid, block>>>(A,B,C, M,K,N); 
     cudaDeviceSynchronize(); 
 
     //check result 
