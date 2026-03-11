@@ -4,9 +4,11 @@ using namespace std;
 
 // A shape = (M,K) , B shape = (K,N)
 // C shape = (M,N)
-int M = 4096;
-int N = 4096;
-int K = 1024;
+int M = 4096*4;
+int N = 4096*4;
+int K = 1024*4;
+
+#define TILE 32
 
 __global__ void multiply(int *A, int *B, int *C, int M, int K, int N){
     // cuda implementation 
@@ -49,8 +51,8 @@ int main() {
     cudaMemPrefetchAsync(C, sizeof(int)* M*N, 0, 0);
 
     //kernel multiply
-    dim3 block(16,16); 
-    dim3 grid((N+15)/16, (M+16)/16)
+    dim3 block(TILE, TILE); 
+    dim3 grid((N+TILE-1)/TILE, (M+TILE-1)/TILE);
     multiply<<<grid, block>>>(A,B,C, M,K,N); 
     cudaDeviceSynchronize(); 
 
